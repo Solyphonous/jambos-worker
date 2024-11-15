@@ -46,6 +46,11 @@ export default {
 			return new Response(JSON.stringify(list.keys), { status: 200})
 		}
 
+		if (path === "/login") {
+			const body = request.json()
+			const { username, password } = body
+		}
+
 		return new Response(formatError("Invalid api request"), { status: 404 })
 	},
 } satisfies ExportedHandler<Env>;
