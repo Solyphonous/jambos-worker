@@ -15,9 +15,12 @@ type User = {
 	rank: number
 }
 
+function formatMessage(item: string, value: any) {
+	return JSON.stringify({ [item]: value })
+}
+
 function formatError(error: string) {
-	const obj = { "error": error }
-	return JSON.stringify(obj)
+	return formatMessage("error", error)
 }
 
 async function hashPassword(password: string): Promise<string> {
@@ -36,7 +39,7 @@ export default {
 
 		const apiKey = request.headers.get("Authorization")
 		if (apiKey !== WorkersAPIKey) {
-			return new Response(formatError("Invalid API key!"), { status: 404 })
+			return new Response(formatError("Invalid API key!"), { status: 403 })
 		}
 
 		// Request article
@@ -66,7 +69,7 @@ export default {
 		if (path === "/list") {
 			const list = await env.JAMBOS_KV.list()
 			if (list === null) {
-				return new Response(formatError("Failed KV fetch"), { status: 404 })
+				return new Response(formatError("Failed KV fetch"), { status: 500 })
 			}
 			return new Response(JSON.stringify(list.keys), { status: 200 })
 		}
@@ -89,7 +92,7 @@ export default {
 			const isMatch = await bcrypt.compare(password, result.hashpass)
 
 			if (!isMatch) {
-				return new Response(formatError("Incorrect password!"), { status: 404 })
+				return new Response(formatError("Incorrect password!"), { status: 400 })
 			}
 
 			var token = jsonwebtoken.sign(
@@ -102,7 +105,7 @@ export default {
 				{ algorithm: "HS256" }
 			)
 
-			return new Response(JSON.stringify(token), {
+			return new Response(formatMessage("token", token), {
 				status: 200,
 				headers: { "Content-Type": "application/json" }
 			})
@@ -114,22 +117,28 @@ export default {
 			const body = await request.json()
 			const { username, password } = body
 
-			const result = await env.DB
+			const userExists = await env.DB
 				.prepare("SELECT * FROM Users WHERE username = ?")
 				.bind(username)
 				.first<User>()
 
-			if (result) {
-				return new Response(formatError("User already exists!"), { status: 404 })
+			if (userExists) {
+				return new Response(formatError("User already exists!"), { status: 400 })
 			}
 
 			const salt = await bcrypt.genSalt(10)
 			const hash: string = await bcrypt.hash(password, salt);
 
-			env.DB
+			const addUser = await env.DB
 			.prepare("INSERT INTO Users (username, hashpass, rank) VALUES (?, ?, ?)")
 			.bind(username, hash, 1)
 			.run()
+
+			if (addUser.success) {
+				return new Response(formatMessage("message", "Account successfully created."), { status: 201 })
+			} else {
+				return new Response(formatError("Account failed to create."), { status: 400 })
+			}
 
 		}
 
