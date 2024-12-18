@@ -1,4 +1,4 @@
-import jsonwebtoken from "jsonwebtoken"
+import jwt from "jsonwebtoken"
 import bcrypt from "bcryptjs"
 
 interface Env {
@@ -95,7 +95,7 @@ export default {
 				return new Response(formatError("Incorrect password!"), { status: 400 })
 			}
 
-			var token = jsonwebtoken.sign(
+			var token = jwt.sign(
 				{
 					id: result.id,
 					username: result.username,
@@ -141,6 +141,19 @@ export default {
 			}
 
 		}
+
+		if (path == "/verifytoken") {
+			const body = await request.json()
+			const { token } = body
+
+			try {
+				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: "HS256" })
+				return new Response(formatMessage("token", verifiedToken), { status: 200 })
+			} catch {
+				return new Response(formatError("Invalid token"), { status: 404 })
+			}
+			
+		} 
 
 		return new Response(formatError("Invalid api request"), { status: 404 })
 	},
