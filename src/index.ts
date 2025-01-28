@@ -49,10 +49,13 @@ export default {
 
 		if (articlepath) {
 			const articleName = articlepath[1].replace(/-/g, " ")
-			const article = await env.JAMBOS_KV.get(articleName)
+			var article = await env.JAMBOS_KV.get(articleName)
 
 			if (article) {
-				return new Response(article, {
+				var articleJSON = JSON.parse(article)
+				articleJSON.name = articleName
+
+				return new Response(JSON.stringify(articleJSON), {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json"
@@ -64,6 +67,29 @@ export default {
 			}
 		}
 
+		// Upload article
+		if (path === "/upload_article") {
+			const body = await request.json()
+			const { article, token } = body
+
+			try {
+				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: "HS256" })
+
+				try {
+					if (verifiedToken.rank > 250) {
+						article.author = verifiedToken.username
+						await env.JAMBOS_KV.put(String(Date.now()), JSON.stringify(article))
+					}
+				} catch (err) {
+					return new Response(formatError(err), { status: 404 })
+				}
+				
+				return new Response(formatMessage("Message", "Success!"), { status: 200})
+			} catch {
+				return new Response(formatError("Invalid token"), { status: 404 })
+			}
+		}
+
 		// Request news list
 
 		if (path === "/list") {
@@ -71,7 +97,9 @@ export default {
 			if (list === null) {
 				return new Response(formatError("Failed KV fetch"), { status: 500 })
 			}
-			return new Response(JSON.stringify(list.keys), { status: 200 })
+
+			const reversed = list.keys.reverse()
+			return new Response(JSON.stringify(reversed), { status: 200 })
 		}
 
 		// Login
