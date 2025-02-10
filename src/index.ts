@@ -162,10 +162,12 @@ export default {
 				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: 'HS256' });
 
 				try {
-					if (verifiedToken) {
+					if (verifiedToken.rank >= 1) {
 						const createComment = await env.DB.prepare('INSERT INTO Comments (articleId, posterId, content) VALUES (?, ?, ?)')
 							.bind(article, verifiedToken.userId, comment)
 							.run();
+					} else {
+						return errorResponse('You are banned from making comments.');
 					}
 				} catch (err) {
 					return errorResponse(err);
