@@ -81,11 +81,20 @@ export default {
 
 		if (path === '/list') {
 			const list = await env.JAMBOS_KV.list();
+
 			if (list === null) {
 				return errorResponse('Failed KV fetch!', 500);
 			}
+			const keys = list.keys.reverse();
 
-			return jsonResponse(list.keys.reverse());
+			const reversedArray = await Promise.all(
+				keys.map(async (keyObj) => ({
+					key: keyObj.name,
+					value: await env.JAMBOS_KV.get(keyObj.name),
+				})),
+			);
+
+			return jsonResponse(reversedArray);
 		}
 
 		// Login
