@@ -15,21 +15,16 @@ type User = {
 	rank: number;
 };
 
-function formatMessage(item: string, value: any) {
-	return JSON.stringify({ [item]: value });
-}
+// Helper functions
 
-function formatError(error: string) {
-	return formatMessage('error', error);
-}
+const jsonResponse = (data: object, status = 200) =>
+	new Response(JSON.stringify(data), {
+		status,
+		headers: { "Content-Type": "application/json" }
+	})
 
-async function hashPassword(password: string): Promise<string> {
-	bcrypt.genSalt(10, function (err, salt) {
-		bcrypt.hash(password, salt, function (err, hash) {
-			return hash;
-		});
-	});
-}
+const errorResponse = (message: string, status = 400) =>
+	jsonResponse({ error: message }, status)
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
@@ -38,9 +33,10 @@ export default {
 
 		const apiKey = request.headers.get('Authorization');
 		if (apiKey !== WorkersAPIKey) {
-			return new Response(formatError('Invalid API key!'), { status: 403 });
+			return errorResponse("Invalid API key!", 403)
 		}
 
+		const body = await request.json()
 		// Request article
 		const url = new URL(request.url);
 		const path = url.pathname.replace(/^\/api/, '');
@@ -61,13 +57,12 @@ export default {
 					},
 				});
 			} else {
-				return new Response(formatError('Article not found!'), { status: 404 });
+				return errorResponse("Article not found!", 404);
 			}
 		}
 
 		// Upload article
 		if (path === '/upload_article') {
-			const body = await request.json();
 			const { article, token } = body;
 
 			try {
@@ -79,12 +74,12 @@ export default {
 						await env.JAMBOS_KV.put(String(Date.now()), JSON.stringify(article));
 					}
 				} catch (err) {
-					return new Response(formatError(err), { status: 404 });
+					return errorResponse(err);
 				}
 
-				return new Response(formatMessage('Message', 'Success!'), { status: 200 });
+				return jsonResponse({ message: "Success!"});
 			} catch {
-				return new Response(formatError('Invalid token'), { status: 404 });
+				return errorResponse("Invalid token!");
 			}
 		}
 
@@ -93,29 +88,27 @@ export default {
 		if (path === '/list') {
 			const list = await env.JAMBOS_KV.list();
 			if (list === null) {
-				return new Response(formatError('Failed KV fetch'), { status: 500 });
+				return errorResponse("Failed KV fetch!", 500);
 			}
 
-			const reversed = list.keys.reverse();
-			return new Response(JSON.stringify(reversed), { status: 200 });
+			return jsonResponse(list.keys.reverse())
 		}
 
 		// Login
 
 		if (path === '/login') {
-			const body = await request.json();
 			const { username, password } = body;
 
 			const result = await env.DB.prepare('SELECT * FROM Users WHERE username = ?').bind(username).first<User>();
 
 			if (!result) {
-				return new Response(formatError('User does not exist!'), { status: 404 });
+				return errorResponse("User does not exist!", 404);
 			}
 
 			const isMatch = await bcrypt.compare(password, result.hashpass);
 
 			if (!isMatch) {
-				return new Response(formatError('Incorrect password!'), { status: 400 });
+				return errorResponse("Invalid password!");
 			}
 
 			var token = jwt.sign(
@@ -128,22 +121,18 @@ export default {
 				{ algorithm: 'HS256' },
 			);
 
-			return new Response(formatMessage('token', token), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonResponse({ "token": token })
 		}
 
 		// Sign up
 
 		if (path == '/signup') {
-			const body = await request.json();
 			const { username, password } = body;
 
 			const userExists = await env.DB.prepare('SELECT * FROM Users WHERE username = ?').bind(username).first<User>();
 
 			if (userExists) {
-				return new Response(formatError('User already exists!'), { status: 400 });
+				return errorResponse("User already exists!");
 			}
 
 			const salt = await bcrypt.genSalt(10);
@@ -152,24 +141,47 @@ export default {
 			const addUser = await env.DB.prepare('INSERT INTO Users (username, hashpass, rank) VALUES (?, ?, ?)').bind(username, hash, 1).run();
 
 			if (addUser.success) {
-				return new Response(formatMessage('message', 'Account successfully created.'), { status: 201 });
+				return jsonResponse({ "message": "Account created successfully!"}, 201)
 			} else {
-				return new Response(formatError('Account failed to create.'), { status: 400 });
+				return errorResponse("Account failed to create.")
 			}
 		}
 
+		// Create comment
+
+		if (path == "/comment") {
+			const { comment, token } = body
+
+			try {
+				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: 'HS256' });
+
+				try {
+					if (verifiedToken) {
+						const createComment = await env.DB.prepare("INSERT INTO Comments (posterId, content) VALUES (?, ?)").bind(verifiedToken.userId, comment).run()
+					}
+				} catch (err) {
+					return errorResponse(err);
+				}
+
+				return jsonResponse({ message: "Success!"});
+			} catch {
+				return errorResponse("Invalid token!");
+			}
+		}
+
+		// Verify token
+
 		if (path == '/verifytoken') {
-			const body = await request.json();
 			const { token } = body;
 
 			try {
 				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: 'HS256' });
-				return new Response(formatMessage('token', verifiedToken), { status: 200 });
+				return jsonResponse({"token": verifiedToken})
 			} catch {
-				return new Response(formatError('Invalid token'), { status: 404 });
+				return errorResponse("Invalid token!")
 			}
 		}
 
-		return new Response(formatError('Invalid api request'), { status: 404 });
+		return errorResponse("Invalid API request!")
 	},
 } satisfies ExportedHandler<Env>;
