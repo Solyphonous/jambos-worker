@@ -181,6 +181,7 @@ export default {
 					FROM Comments c
 					JOIN Users u ON c.posterId=u.userId
 					WHERE c.articleId = ?
+					ORDER BY c.createdAt DESC
 					`,
 				)
 					.bind(article)
