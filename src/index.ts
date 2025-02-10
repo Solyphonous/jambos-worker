@@ -20,11 +20,10 @@ type User = {
 const jsonResponse = (data: object, status = 200) =>
 	new Response(JSON.stringify(data), {
 		status,
-		headers: { "Content-Type": "application/json" }
-	})
+		headers: { 'Content-Type': 'application/json' },
+	});
 
-const errorResponse = (message: string, status = 400) =>
-	jsonResponse({ error: message }, status)
+const errorResponse = (message: string, status = 400) => jsonResponse({ error: message }, status);
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
@@ -33,10 +32,10 @@ export default {
 
 		const apiKey = request.headers.get('Authorization');
 		if (apiKey !== WorkersAPIKey) {
-			return errorResponse("Invalid API key!", 403)
+			return errorResponse('Invalid API key!', 403);
 		}
 
-		const body = await request.json()
+		const body = await request.json();
 		// Request article
 		const url = new URL(request.url);
 		const path = url.pathname.replace(/^\/api/, '');
@@ -57,7 +56,7 @@ export default {
 					},
 				});
 			} else {
-				return errorResponse("Article not found!", 404);
+				return errorResponse('Article not found!', 404);
 			}
 		}
 
@@ -77,9 +76,9 @@ export default {
 					return errorResponse(err);
 				}
 
-				return jsonResponse({ message: "Success!"});
+				return jsonResponse({ message: 'Success!' });
 			} catch {
-				return errorResponse("Invalid token!");
+				return errorResponse('Invalid token!');
 			}
 		}
 
@@ -88,10 +87,10 @@ export default {
 		if (path === '/list') {
 			const list = await env.JAMBOS_KV.list();
 			if (list === null) {
-				return errorResponse("Failed KV fetch!", 500);
+				return errorResponse('Failed KV fetch!', 500);
 			}
 
-			return jsonResponse(list.keys.reverse())
+			return jsonResponse(list.keys.reverse());
 		}
 
 		// Login
@@ -102,13 +101,13 @@ export default {
 			const result = await env.DB.prepare('SELECT * FROM Users WHERE username = ?').bind(username).first<User>();
 
 			if (!result) {
-				return errorResponse("User does not exist!", 404);
+				return errorResponse('User does not exist!', 404);
 			}
 
 			const isMatch = await bcrypt.compare(password, result.hashpass);
 
 			if (!isMatch) {
-				return errorResponse("Invalid password!");
+				return errorResponse('Invalid password!');
 			}
 
 			var token = jwt.sign(
@@ -121,18 +120,18 @@ export default {
 				{ algorithm: 'HS256' },
 			);
 
-			return jsonResponse({ "token": token })
+			return jsonResponse({ token: token });
 		}
 
 		// Sign up
 
-		if (path == '/signup') {
+		if (path === '/signup') {
 			const { username, password } = body;
 
 			const userExists = await env.DB.prepare('SELECT * FROM Users WHERE username = ?').bind(username).first<User>();
 
 			if (userExists) {
-				return errorResponse("User already exists!");
+				return errorResponse('User already exists!');
 			}
 
 			const salt = await bcrypt.genSalt(10);
@@ -141,47 +140,49 @@ export default {
 			const addUser = await env.DB.prepare('INSERT INTO Users (username, hashpass, rank) VALUES (?, ?, ?)').bind(username, hash, 1).run();
 
 			if (addUser.success) {
-				return jsonResponse({ "message": "Account created successfully!"}, 201)
+				return jsonResponse({ message: 'Account created successfully!' }, 201);
 			} else {
-				return errorResponse("Account failed to create.")
+				return errorResponse('Account failed to create.');
 			}
 		}
 
 		// Create comment
 
-		if (path == "/comment") {
-			const { comment, token } = body
+		if (path === '/comment') {
+			const { comment, token } = body;
 
 			try {
 				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: 'HS256' });
 
 				try {
 					if (verifiedToken) {
-						const createComment = await env.DB.prepare("INSERT INTO Comments (posterId, content) VALUES (?, ?)").bind(verifiedToken.userId, comment).run()
+						const createComment = await env.DB.prepare('INSERT INTO Comments (posterId, content) VALUES (?, ?)')
+							.bind(verifiedToken.userId, comment)
+							.run();
 					}
 				} catch (err) {
 					return errorResponse(err);
 				}
 
-				return jsonResponse({ message: "Success!"});
+				return jsonResponse({ message: 'Success!' });
 			} catch {
-				return errorResponse("Invalid token!");
+				return errorResponse('Invalid token!');
 			}
 		}
 
 		// Verify token
 
-		if (path == '/verifytoken') {
+		if (path === '/verifytoken') {
 			const { token } = body;
 
 			try {
 				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: 'HS256' });
-				return jsonResponse({"token": verifiedToken})
+				return jsonResponse({ token: verifiedToken });
 			} catch {
-				return errorResponse("Invalid token!")
+				return errorResponse('Invalid token!');
 			}
 		}
 
-		return errorResponse("Invalid API request!")
+		return errorResponse('Invalid API request!');
 	},
 } satisfies ExportedHandler<Env>;
