@@ -9,7 +9,7 @@ interface Env {
 }
 
 type User = {
-	id: number;
+	userId: number;
 	username: string;
 	hashpass: string;
 	rank: number;
@@ -35,7 +35,6 @@ export default {
 			return errorResponse('Invalid API key!', 403);
 		}
 
-		const body = await request.json();
 		// Request article
 		const url = new URL(request.url);
 		const path = url.pathname.replace(/^\/api/, '');
@@ -49,12 +48,7 @@ export default {
 				var articleJSON = JSON.parse(article);
 				articleJSON.name = articleName;
 
-				return new Response(JSON.stringify(articleJSON), {
-					status: 200,
-					headers: {
-						'Content-Type': 'application/json',
-					},
-				});
+				return jsonResponse(articleJSON);
 			} else {
 				return errorResponse('Article not found!', 404);
 			}
@@ -62,6 +56,7 @@ export default {
 
 		// Upload article
 		if (path === '/upload_article') {
+			const body = await request.json();
 			const { article, token } = body;
 
 			try {
@@ -96,6 +91,7 @@ export default {
 		// Login
 
 		if (path === '/login') {
+			const body = await request.json();
 			const { username, password } = body;
 
 			const result = await env.DB.prepare('SELECT * FROM Users WHERE username = ?').bind(username).first<User>();
@@ -112,7 +108,7 @@ export default {
 
 			var token = jwt.sign(
 				{
-					id: result.id,
+					userId: result.userId,
 					username: result.username,
 					rank: result.rank,
 				},
@@ -126,6 +122,7 @@ export default {
 		// Sign up
 
 		if (path === '/signup') {
+			const body = await request.json();
 			const { username, password } = body;
 
 			const userExists = await env.DB.prepare('SELECT * FROM Users WHERE username = ?').bind(username).first<User>();
@@ -149,15 +146,16 @@ export default {
 		// Create comment
 
 		if (path === '/comment') {
-			const { comment, token } = body;
+			const body = await request.json();
+			const { article, comment, token } = body;
 
 			try {
 				const verifiedToken = jwt.verify(token, JWTSigningKey, { algorithm: 'HS256' });
 
 				try {
 					if (verifiedToken) {
-						const createComment = await env.DB.prepare('INSERT INTO Comments (posterId, content) VALUES (?, ?)')
-							.bind(verifiedToken.userId, comment)
+						const createComment = await env.DB.prepare('INSERT INTO Comments (articleId, posterId, content) VALUES (?, ?, ?)')
+							.bind(article, verifiedToken.userId, comment)
 							.run();
 					}
 				} catch (err) {
@@ -170,9 +168,34 @@ export default {
 			}
 		}
 
+		// Get comments
+
+		if (path == '/get_comments') {
+			const body = await request.json();
+			const { article } = body;
+
+			try {
+				const comments = await env.DB.prepare(
+					`
+					SELECT c.commentId, c.content, c.createdAt, u.username
+					FROM Comments c
+					JOIN Users u ON c.posterId=u.userId
+					WHERE c.articleId = ?
+					`,
+				)
+					.bind(article)
+					.all();
+
+				return jsonResponse(comments.results);
+			} catch {
+				return errorResponse('Failed to fetch comments!');
+			}
+		}
+
 		// Verify token
 
 		if (path === '/verifytoken') {
+			const body = await request.json();
 			const { token } = body;
 
 			try {
